@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xmg-oasis-tray"
+dynamic = ["version"]
+description = "Tray utility that follows the XMG Control Center mode and drives the XMG OASIS liquid cooler"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = ["paho-mqtt>=2.0,<3", "pystray>=0.19,<1", "Pillow>=10"]
+classifiers = ["Operating System :: Microsoft :: Windows", "Programming Language :: Python :: 3"]
+
+[project.gui-scripts]
+xmg-oasis-tray = "xmg_oasis_tray.__main__:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "xmg_oasis_tray.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
