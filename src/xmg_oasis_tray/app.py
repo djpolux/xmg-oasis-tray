@@ -31,6 +31,7 @@ class OasisTray:
         self.initial_lc = None      # cooler state found at start-up (restore option)
         self.broker_ok = False
         self.boost = False
+        self._file_mode = None      # last value read from the mode file (fallback watcher)
         self._stop = threading.Event()
         self.icon = pystray.Icon("xmg_oasis_tray", make_icon(None, False), W.APP_NAME,
                                  menu=self._build_menu())
@@ -93,6 +94,9 @@ class OasisTray:
         first = not self.lc
         self.lc = data
         now_connected = bool(data.get("connected"))
+        if was_connected and not now_connected:
+            self.boost = False
+            C.log("cooler disconnected")
         if first and self.initial_lc is None:
             self.initial_lc = {"fan": str(data.get("LC_FanCtrl", "")),
                                "pump": str(data.get("LC_PumpCtrl", ""))}
@@ -129,9 +133,15 @@ class OasisTray:
         if reason == "mode change":
             self.notify(self.t("notify.mode", m=self.mode_label(mode), s=self.profile_short(prof)))
 
-    def apply_cooler(self, fan, pump="default", boost=False, reason="manual"):
+    def cooler_ready(self):
+        """False when the last cooler status says it is disconnected (Bluetooth)."""
         if self.lc and not self.lc.get("connected"):
             C.log("cooler not connected: nothing sent")
+            return False
+        return True
+
+    def apply_cooler(self, fan, pump="default", boost=False, reason="manual"):
+        if not self.cooler_ready():
             return
         if not boost:
             # always clear boost first: it may have been left on (previous session,
@@ -145,9 +155,16 @@ class OasisTray:
         C.log(f"cooler fan={fan} pump={pump} boost={boost} ({reason})")
 
     def set_boost(self, on):
+        if not self.cooler_ready():
+            self.refresh()
+            return
         self.boost = bool(on)
         self.publish(P.T_LC_CONTROL, {"Action": "LC_FanBoost", "IsEnable": self.boost})
         self.refresh()
+
+    def set_pump(self, pump):
+        if self.cooler_ready():
+            self.publish(P.T_LC_CONTROL, {"Action": "LC_PumpCtrl", "PumpCtrl": pump})
 
     def profile_short(self, prof):
         if prof["boost"]:
@@ -167,7 +184,12 @@ class OasisTray:
                 mode = str(json.loads(path.read_text(encoding="utf-8-sig")).get("OperatingMode"))
             except (OSError, ValueError):
                 continue
-            if mode in P.MODE_ACTIONS and self.mode is not None and mode != self.mode:
+            if mode not in P.MODE_ACTIONS:
+                continue
+            previous, self._file_mode = self._file_mode, mode
+            # only react when the file itself changed (a change MQTT missed);
+            # a file that merely lags behind MQTT must not revert the mode
+            if previous is not None and mode != previous and mode != self.mode and self.mode is not None:
                 C.log(f"mode file says {mode}")
                 self.on_mode(mode)
 
@@ -225,20 +247,24 @@ class OasisTray:
                       v=volt, b="  [BOOST]" if self.boost else "")
 
     def _build_menu(self):
-        def radio(text, action, is_checked):
-            return Item(text, action, checked=is_checked, radio=True)
+        def radio(text, action, is_checked, enabled=True):
+            return Item(text, action, checked=is_checked, radio=True, enabled=enabled)
+
+        connected = lambda i: bool(self.lc.get("connected"))   # noqa: E731
 
         def manual_fan(level):
             return radio(lambda i: self.t(f"fan.{level}"),
                          lambda: self.apply_cooler(level, "default", False),
-                         lambda i: str(self.lc.get("LC_FanCtrl")) == level and not self.boost)
+                         lambda i: str(self.lc.get("LC_FanCtrl")) == level and not self.boost,
+                         connected)
 
         def manual_pump(v):
             return radio(lambda i: self.t("pump.v", v=P.PUMP_VOLT[v]),
-                         lambda: self.publish(P.T_LC_CONTROL, {"Action": "LC_PumpCtrl", "PumpCtrl": v}),
-                         lambda i: str(self.lc.get("LC_PumpCtrl")) == v)
+                         lambda: self.set_pump(v),
+                         lambda i: str(self.lc.get("LC_PumpCtrl")) == v,
+                         connected)
 
-        def mode_settings(mode):
+        def mode_profile(mode):
             prof = lambda: self.cfg["modes"][mode]   # noqa: E731
             fan_items = [radio(lambda i, l=lvl: self.t(f"fan.{l}"),
                                call(self.set_mode_field, mode, "fan", lvl),
@@ -250,11 +276,11 @@ class OasisTray:
                                  call(self.set_mode_field, mode, "pump", v),
                                  lambda i, v=v: prof()["pump"] == v) for v in P.PUMP_PRESETS]
             return Item(lambda i: self.mode_label(mode), Menu(
-                Item(lambda i: self.t("menu.mode.enabled"),
+                Item(lambda i: self.t("menu.profile.use"),
                      lambda: self.set_mode_field(mode, "enabled", not prof()["enabled"]),
                      checked=lambda i: prof()["enabled"]),
-                Item(lambda i: self.t("menu.mode.fan"), Menu(*fan_items)),
-                Item(lambda i: self.t("menu.mode.pump"), Menu(*pump_items)),
+                Item(lambda i: self.t("menu.profile.fan"), Menu(*fan_items)),
+                Item(lambda i: self.t("menu.profile.pump"), Menu(*pump_items)),
                 Item(lambda i: self.t("menu.mode.boost"),
                      lambda: self.set_mode_field(mode, "boost", not prof()["boost"]),
                      checked=lambda i: prof()["boost"]),
@@ -268,24 +294,29 @@ class OasisTray:
             Item(lambda i: self._status_line(), None, enabled=False),
             Item(lambda i: self._cooler_line(), None, enabled=False),
             Menu.SEPARATOR,
-            Item(lambda i: self.t("menu.cooler"), Menu(*[manual_fan(l) for l in P.FAN_PRESETS])),
-            Item(lambda i: self.t("menu.boost"), lambda: self.set_boost(not self.boost),
-                 checked=lambda i: self.boost),
-            Item(lambda i: self.t("menu.pump"), Menu(*[manual_pump(v) for v in P.PUMP_PRESETS])),
             Item(lambda i: self.t("menu.pcmode"), Menu(*[
                 radio(lambda i, m=m: self.mode_label(m), call(self.switch_pc_mode, m),
                       lambda i, m=m: self.mode == m) for m in P.MODE_ORDER])),
+            Item(lambda i: self.t("menu.manual") if self.lc.get("connected") else self.t("menu.manual.off"), Menu(
+                Item(lambda i: self.t("menu.manual.fan"), Menu(*[manual_fan(l) for l in P.FAN_PRESETS]),
+                     enabled=connected),
+                Item(lambda i: self.t("menu.manual.pump"), Menu(*[manual_pump(v) for v in P.PUMP_PRESETS]),
+                     enabled=connected),
+                Menu.SEPARATOR,
+                Item(lambda i: self.t("menu.boost"), lambda: self.set_boost(not self.boost),
+                     checked=lambda i: self.boost, enabled=connected),
+            )),
             Menu.SEPARATOR,
+            Item(lambda i: self.t("menu.profiles"), Menu(*[mode_profile(m) for m in P.MODE_ORDER])),
             Item(lambda i: self.t("menu.settings"), Menu(
                 toggle_item("follow", "menu.follow"),
-                Item(lambda i: self.t("menu.permode"), Menu(*[mode_settings(m) for m in P.MODE_ORDER])),
                 Menu.SEPARATOR,
                 toggle_item("notify", "menu.notify"),
                 toggle_item("reapply_on_reconnect", "menu.reapply"),
                 toggle_item("watch_mode_file", "menu.watch"),
                 toggle_item("restore_on_exit", "menu.restore"),
                 Item(lambda i: self.t("menu.lang"), Menu(
-                    radio("Francais", lambda: self.set_language("fr"), lambda i: self.cfg["language"] == "fr"),
+                    radio("Français", lambda: self.set_language("fr"), lambda i: self.cfg["language"] == "fr"),
                     radio("English", lambda: self.set_language("en"), lambda i: self.cfg["language"] == "en"),
                 )),
                 Item(lambda i: self.t("menu.startup"), lambda: self.toggle_startup(),

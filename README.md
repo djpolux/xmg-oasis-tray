@@ -18,15 +18,13 @@ the cooler (fan / pump / boost) you chose for that mode.
   bleu **S**ilencieux, vert **E**nthusiast, rouge **O**verboost, violet **P**ersonnalisé.
 - **Suit les modes du PC** : à chaque changement (Control Center ou touche Fn), il
   applique le réglage du refroidisseur choisi pour ce mode.
-- **Clic droit** : état du PC et de l'OASIS, réglage manuel (ventilateur 40 / 60 /
-  90 %, auto), **Boost** (pompe + ventilateur 90 %), **tension de pompe** (7 / 8 / 11 V),
-  changement de mode du PC, et tous les **réglages**.
+- **Clic droit** : état du PC et de l'OASIS, **Changer le mode du PC**, **Contrôle manuel de l'OASIS** (ventilateur 40 / 60 / 90 %, auto, **tension de pompe** 7 / 8 / 11 V, **Boost** pompe + ventilateur 90 %), **Profil OASIS de chaque mode** et **Réglages**. Le contrôle manuel est grisé, avec la raison affichée, tant que l'OASIS est déconnecté en Bluetooth.
 
-### Réglages (menu Réglages)
+### Menus Profil OASIS de chaque mode et Réglages
 | Réglage | Effet |
 |---|---|
 | Suivre les modes du PC | Active / désactive tout le suivi automatique |
-| Réglage par mode | Pour chaque mode : suivre ou non, ventilateur, pompe, boost |
+| Profil OASIS de chaque mode | Pour chaque mode : appliquer ou non le profil, ventilateur, tension de pompe, boost |
 | Notifications | Bulle Windows à chaque changement de mode |
 | Réappliquer à la reconnexion | Réapplique le réglage quand l'OASIS se reconnecte en Bluetooth |
 | Surveiller le fichier de mode | Détection de secours des changements de mode |
@@ -59,10 +57,7 @@ Le service XMG n'accepte que des valeurs prédéfinies : ventilateur 40 / 50 / 6
   **E**nthusiast, red **O**verboost, purple **P**ersonal/Custom.
 - **Follows the PC modes**: on every change (Control Center or Fn hotkey) it applies
   the cooler setting chosen for that mode.
-- **Right click**: PC and OASIS status, manual control (fan 40 / 60 / 90 %, auto),
-  **Boost** (pump + fan 90 %), **pump voltage** (7 / 8 / 11 V), PC mode switch and all
-  **settings** (per-mode fan / pump / boost / enabled, notifications, re-apply on
-  reconnection, mode-file fallback, restore on exit, language, start with Windows).
+- **Right click**: PC and OASIS status, **Switch PC mode**, **OASIS manual control** (fan 40 / 60 / 90 %, auto, **pump voltage** 7 / 8 / 11 V, **Boost** pump + fan 90 %), **OASIS profile per mode** (apply or not, fan, pump voltage, boost) and **Settings** (follow PC modes, notifications, re-apply on reconnection, mode-file fallback, restore on exit, language, start with Windows). Manual control is greyed out, with the reason shown, while the OASIS is disconnected over Bluetooth.
 
 ### Install (nothing else needed)
 1. Download `XMG-OASIS-Tray.exe` from **Releases**.
